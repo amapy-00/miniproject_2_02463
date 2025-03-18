@@ -1,5 +1,5 @@
-#Project 2 code
-from data import load_dataset, filter_dataset
+
+from dataProject2 import load_dataset, filter_dataset
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.decomposition import PCA, KernelPCA
@@ -12,7 +12,6 @@ import pandas as pd
 X_full,y_full = load_dataset()
 X,y = filter_dataset(X_full,y_full,"1,7")
 X = X / 255
-
 print(X.shape)
 print(y.shape)
 
@@ -22,13 +21,11 @@ max(X_full[0]), max(X[0])
 y = np.array(y, dtype=int)
 ###########
 
-
 # Plot the squared images
 fig, ax = plt.subplots(1, 2)
 ax[0].imshow(X[0].reshape(28,28), cmap='gray')
 ax[1].imshow(X[45].reshape(28,28), cmap='gray')
 plt.show()
-
 
 # Perform PCA on the dataset
 pca = PCA(n_components=2)
@@ -53,16 +50,12 @@ plt.xlabel('n_components')
 plt.ylabel('Explained variance ratio')
 plt.title('n_components vs. Explained Variance Ratio')
 
-
-
 # LDA proves to be much better, since we care more about class separation and nor variance
 lda = LinearDiscriminantAnalysis(n_components=1)
 Xs = StandardScaler().fit_transform(X)
 X_lda = lda.fit_transform(Xs, y)
 print("Total variance capture by LDA: ", sum(lda.explained_variance_ratio_))
 print("New feature-space shape: ", X_lda.shape)
-
-
 
 # Plot LDA
 # Scatter plot along a single axis (1D)
@@ -74,27 +67,15 @@ plt.title("LDA Feature Distribution by Class")
 plt.legend(["Digit 1", "Digit 7"])
 plt.show()
 
-
-
-# import sys
-# #!{sys.executable} -m pip install tqdm
-# !{sys.executable} -m pip install modAL
-# !{sys.executable} -m pip install modal
-
+# Import required modules
 from modAL.disagreement import vote_entropy_sampling
 from modAL.models import ActiveLearner, Committee
-
-
 from sklearn.ensemble import RandomForestClassifier
 from joblib import Parallel, delayed
 import itertools as it
 from sklearn.model_selection import train_test_split
 from collections import namedtuple
-from tqdm.notebook import tqdm, trange
-#####
 from tqdm import tqdm
-#######
-
 
 ModelClass=RandomForestClassifier
 
@@ -112,79 +93,75 @@ ResultsRecord = namedtuple('ResultsRecord', ['estimator', 'query_id', 'score'])
 y = np.array(y, dtype=int)  # Ensure labels are integers before splitting
 X_train, X_test, y_train, y_test = train_test_split(X_lda, y, test_size=1/3, random_state=1)
 ##########
-# X_train, X_test, y_train, y_test = train_test_split(
-#     X_lda, y, test_size=1/3, random_state=SEED)
 
 # in case repetitions are desired
 permutations=[np.random.permutation(X_train.shape[0]) for _ in range(n_repeats)]
 
-
-# PARRALLEL VERSION OF THE CELL ABOVE
-# Use this instead if you aren't afraid of working with parallel code or want to learn.
-
+# Different committee sizes
 n_members=[2, 4, 8, 16]
 
-def oracle(query_idx):
-   return y_train[query_idx]
-
-
-def active_learning_loop(committee, X_pool, y_pool, X_test, y_test):
-    """Runs the active learning process by querying the most uncertain samples."""
-    performance = []
-    
-    for i_query in tqdm(range(n_queries), desc="Active Learning Progress"):
-        query_idx, query_instance = committee.query(X_pool)
-        
-        # The oracle provides the true label
-        y_new = oracle(query_idx)
-        
-        # Teach the committee the new label
-        committee.teach(X_pool[query_idx].reshape(1, -1), np.array(y_new).reshape(1,))
-
-        # Update classes
-        committee._set_classes()
-
-        # Remove the queried sample from the pool
-        X_pool = np.delete(X_pool, query_idx, axis=0)
-        y_pool = np.delete(y_pool, query_idx)
-
-        # Evaluate performance
-        score = committee.score(X_test, y_test)
-        performance.append(score)
-
-    return performance
-
 def train_committee(i_repeat, i_members, X_train, y_train):
-    y_train = np.array(y_train, dtype=int)  
+    y_train = np.array(y_train, dtype=int) 
     committee_results = []
     print('')
 
     X_pool = X_train.copy()
     y_pool = y_train.copy()
-    start_indices = permutations[i_repeat][:10]  
+
+    start_indices = permutations[i_repeat][:1]
 
     committee_members = [ActiveLearner(estimator=ModelClass(),
                                        X_training=X_train[start_indices, :],
-                                       y_training=y_train[start_indices])
-                         for _ in range(i_members)]
+                                       y_training=y_train[start_indices],
+                                       ) for _ in range(i_members)]
 
-    committee = Committee(learner_list=committee_members, query_strategy=vote_entropy_sampling)
+    committee = Committee(learner_list=committee_members,
+                          query_strategy=vote_entropy_sampling)
+
     X_pool = np.delete(X_pool, start_indices, axis=0)
     y_pool = np.delete(y_pool, start_indices)
 
-    performance = active_learning_loop(committee, X_pool, y_pool, X_test, y_test)
-    
-    return performance
+    for i_query in tqdm(range(1, n_queries), desc=f'Round {i_repeat} with {i_members} members', leave=False):
+        query_idx, query_instance = committee.query(X_pool)
 
-result = Parallel(n_jobs=-1)(delayed(train_committee)(i, i_members, X_train, y_train)
-                             for i, i_members in it.product(range(n_repeats), n_members))
+        committee.teach(
+            X=X_pool[query_idx].reshape(1, -1),
+            y=y_pool[query_idx].reshape(1, )
+        )
+        committee._set_classes()
+
+        X_pool = np.delete(X_pool, query_idx, axis=0)
+        y_pool = np.delete(y_pool, query_idx)
+
+        score = committee.score(X_test, y_test)
+
+        committee_results.append(ResultsRecord(
+            f'committe_{i_members}',
+            i_query,
+            score))
+
+    return committee_results
+
+result = Parallel(n_jobs=-1)(delayed(train_committee)(i,i_members,X_train,y_train)
+                    for i, i_members in it.product(range(n_repeats), n_members))
 
 print('All jobs done')
+committee_results=[r for rs in result for r in rs]
 
-plt.figure(figsize=(8, 5))
-plt.plot(range(1, n_queries + 1), result[0], marker='o', linestyle='-')
+# Convert results to DataFrame
+df_results = pd.DataFrame(committee_results, columns=['estimator', 'query_id', 'score'])
+
+# Plot the active learning performance for different committee sizes
+plt.figure(figsize=(10, 6))
+for members in n_members:
+    subset = df_results[df_results['estimator'] == f'committe_{members}']
+    if not subset.empty:
+        plt.plot(subset['query_id'], subset['score'], marker='o', linestyle='-', label=f'{members} Members')
+
 plt.xlabel("Number of Queries")
 plt.ylabel("Accuracy")
-plt.title("Active Learning Performance")
+plt.title("Active Learning Performance for Different Committee Sizes")
+plt.legend()
 plt.grid(True)
 plt.show()
+
