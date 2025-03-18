@@ -59,16 +59,16 @@ plt.title('n_components vs. Explained Variance Ratio')
 
 # Define and plot best LDA 
 # Scatter plot along a single axis (1D)
-lda = LinearDiscriminantAnalysis(n_components=3)
+lda = LinearDiscriminantAnalysis(n_components=2)
 X_lda = lda.fit_transform(X, y)
 var_ratio_lda.append(np.sum(lda.explained_variance_ratio_))
 
 # Create a DataFrame for easy plotting
-df_lda = pd.DataFrame(X_lda, columns=['LDA1', 'LDA2', 'LDA3'])
+df_lda = pd.DataFrame(X_lda, columns=['LDA1', 'LDA2'])
 df_lda['label'] = y  # Add labels
 
 # Pairplot (2D projections of LDA components)
-sns.pairplot(df_lda, hue='label', palette=['blue', 'red', 'yellow', 'green'])
+sns.pairplot(df_lda, hue='label', palette=['blue', 'red', 'yellow'])
 plt.suptitle("Pairwise Scatter Plots of LDA Components", y=1.02)
 plt.show()
 
@@ -111,7 +111,7 @@ n_queries = 75 # You can lower this to decrease run time
 
 # You can increase this to get error bars on your evaluation.
 # You probably need to use the parallel code to make this reasonable to compute
-n_repeats = 3
+n_repeats = 1
 
 ResultsRecord = namedtuple('ResultsRecord', ['estimator', 'query_id', 'score'])
 
@@ -124,7 +124,7 @@ X_train, X_test, y_train, y_test = train_test_split(X_lda, y, test_size=1/3, ran
 permutations=[np.random.permutation(X_train.shape[0]) for _ in range(n_repeats)]
 
 # Different committee sizes
-n_members=[2, 4, 8, 16]
+n_members=[2]
 
 def train_committee(i_repeat, i_members, X_train, y_train):
     y_train = np.array(y_train, dtype=int) 
@@ -136,7 +136,7 @@ def train_committee(i_repeat, i_members, X_train, y_train):
 
     start_indices = permutations[i_repeat][:1]
 
-    committee_members = [ActiveLearner(estimator=ModelClass(),
+    committee_members = [ActiveLearner(estimator=ModelClass(max_depth=10),
                                        X_training=X_train[start_indices, :],
                                        y_training=y_train[start_indices],
                                        ) for _ in range(i_members)]
