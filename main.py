@@ -45,9 +45,9 @@ def perform_pca(X, n_components):
     print(f"PCA (n_components={n_components}) variance: {total_variance}")
     return X_transformed, total_variance
 
-def perform_lda(X, y, n_components, scale=False):
-    """Apply LDA (with optional scaling) and return transformed data and total variance."""
-    X_prepared = StandardScaler().fit_transform(X) if scale else X
+def perform_lda(X, y, n_components):
+    """Apply LDA and return transformed data and total variance."""
+    X_prepared = StandardScaler().fit_transform(X)
     lda = LinearDiscriminantAnalysis(n_components=n_components)
     X_transformed = lda.fit_transform(X_prepared, y)
     total_variance = np.sum(lda.explained_variance_ratio_)
@@ -112,6 +112,7 @@ def run_experiment(digit_filter, lda_dims, active_params, legend_labels):
       - Runs PCA (for variance check) and then applies LDA.
       - Performs active learning (random sampling and QBC) and plots learning curves.
     """
+    print(f"Running experiment for digits {digit_filter} with LDA dims {lda_dims}")
     # Load and display sample images
     X, y = load_data(digit_filter)
     sample_indices = [0, 45] if digit_filter == "1,7" else [0, 50, 100]
@@ -122,9 +123,8 @@ def run_experiment(digit_filter, lda_dims, active_params, legend_labels):
     _, pca_variance_2 = perform_pca(X, n_components=2)
     _, pca_variance_1 = perform_pca(X, n_components=1)
     
-    # Apply LDA; scale only for two-digit case
-    scale_option = True if digit_filter == "1,7" else False
-    X_lda, _ = perform_lda(X, y, n_components=lda_dims, scale=scale_option)
+    # Apply LDA; always use scaling in LDA.
+    X_lda, _ = perform_lda(X, y, n_components=lda_dims)
     
     # Plot LDA distributions
     if X_lda.ndim == 1 or X_lda.shape[1] == 1:
