@@ -57,7 +57,7 @@ def perform_lda(X, y, n_components):
 def simulate_random_sampling(model, X_pool, y_pool, X_test, y_test, pool_order, initial_samples, added_samples, num_iterations):
     """Active learning simulation with random sampling."""
     accuracy_results = []
-    for i in range(num_iterations):
+    for i in range(1, num_iterations+1):
         indices = pool_order[:initial_samples + i * added_samples]
         X_train = np.take(X_pool, indices, axis=0)
         y_train = np.take(y_pool, indices, axis=0)
@@ -175,16 +175,17 @@ def run_experiment(digit_filter, lda_dims, active_params, legend_labels):
                                            active_params['committee_sizes'])
     
     # Plot both random sampling and QBC curves (for each committee size) in one figure
-    plt.figure(figsize=(6, 4), dpi=150)
+    plt.figure(figsize=(8, 5), dpi=150)
     random_results = np.array(random_acc)
-    plt.plot(random_results[:, 0], random_results[:, 1], marker='o', label='Random sampling')
+    plt.plot(random_results[:, 0], random_results[:, 1], marker='o', markersize=4, label='Random sampling')
     for cs, acc in comp_results.items():
         cs_results = np.array(acc)
-        plt.plot(cs_results[:, 0], cs_results[:, 1], marker='o', label=f'QBC Committee = {cs}')
-    plt.xlabel("Number of training samples")
-    plt.ylabel("Test accuracy")
-    plt.legend()
-    plt.title(f"Comparison: Random vs QBC (Committee Sizes) ({digit_filter}) pool_size={Pool_size}")
+        plt.plot(cs_results[:, 0], cs_results[:, 1], marker='o', markersize=4, label=f'QBC Committee = {cs}')
+    plt.xlabel("Number of training samples", fontsize=10)
+    plt.ylabel("Test accuracy", fontsize=10)
+    plt.title(f"Comparison: Random vs QBC (Committee Sizes) ({digit_filter})\npool_size={Pool_size}", fontsize=12)
+    plt.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=2, fancybox=True, shadow=True, fontsize='small')
+    plt.tight_layout()
     plt.show()
 
 def main():
