@@ -68,7 +68,7 @@ def simulate_random_sampling(model, X_pool, y_pool, X_test, y_test, pool_order, 
         print(f"Model: LR, {initial_samples + i * added_samples} random samples")
     return accuracy_results
 
-def simulate_qbc(model, X_pool, y_pool, X_test, y_test, pool_order, initial_samples, added_samples, num_iterations, n_committee=10):
+def simulate_qbc(model, X_pool, y_pool, X_test, y_test, pool_order, initial_samples, added_samples, num_iterations, committee_size=10):
     """Active learning simulation using QBC with bootstrapped committees."""
     train_indices = pool_order[:initial_samples]
     X_train = np.take(X_pool, train_indices, axis=0)
@@ -78,7 +78,7 @@ def simulate_qbc(model, X_pool, y_pool, X_test, y_test, pool_order, initial_samp
     
     for i in range(num_iterations):
         committee_predictions = []
-        for _ in range(n_committee):
+        for _ in range(committee_size):
             X_boot, y_boot = sklearn.utils.resample(X_train, y_train, stratify=y_train)
             model.fit(X_boot, y_boot)
             preds = model.predict(X_pool[remaining_indices])
@@ -87,7 +87,7 @@ def simulate_qbc(model, X_pool, y_pool, X_test, y_test, pool_order, initial_samp
         vote_fraction = []
         for j in range(committee_predictions.shape[1]):
             counts = np.bincount(committee_predictions[:, j].astype(int))
-            vote_fraction.append(np.max(counts) / n_committee)
+            vote_fraction.append(np.max(counts) / committee_size)
         vote_fraction = np.array(vote_fraction)
         # Select least confident samples (lowest vote_fraction)
         selected_idx = np.argsort(vote_fraction)[:added_samples]
@@ -155,7 +155,8 @@ def run_experiment(digit_filter, lda_dims, active_params, legend_labels):
                                           active_params['added_samples'], active_params['num_iterations'])
     qbc_acc = simulate_qbc(lr_model, X_pool, y_pool, X_test, y_test,
                            pool_order, active_params['initial_samples'],
-                           active_params['added_samples'], active_params['num_iterations'])
+                           active_params['added_samples'], active_params['num_iterations'],
+                           committee_size=active_params.get('committee_size', 10))
     
     plt.figure(figsize=(6, 4), dpi=150)
     random_results = np.array(random_acc)
@@ -170,15 +171,15 @@ def run_experiment(digit_filter, lda_dims, active_params, legend_labels):
 
 def main():
     # Experiment 1: Digits 1 and 7; LDA with 1 component; active learning parameters
-    exp1_params = {'initial_samples': 10, 'added_samples': 5, 'num_iterations': 30}
+    exp1_params = {'initial_samples': 10, 'added_samples': 5, 'num_iterations': 30, 'committee_size': 10}
     run_experiment("1,7", lda_dims=1, active_params=exp1_params, legend_labels=('Random sampling', 'QBC'))
     
     # Experiment 2: Digits 1,7,9; LDA with 2 components
-    exp2_params = {'initial_samples': 10, 'added_samples': 5, 'num_iterations': 30}
+    exp2_params = {'initial_samples': 10, 'added_samples': 5, 'num_iterations': 30, 'committee_size': 10}
     run_experiment("1,7,9", lda_dims=2, active_params=exp2_params, legend_labels=('Random sampling', 'QBC'))
     
     # Experiment 3: All digits; LDA with 8 components; different active learning parameters
-    exp3_params = {'initial_samples': 10, 'added_samples': 10, 'num_iterations': 30}
+    exp3_params = {'initial_samples': 10, 'added_samples': 10, 'num_iterations': 30, 'committee_size': 10}
     run_experiment("all", lda_dims=8, active_params=exp3_params, legend_labels=('Random sampling', 'QBC'))
 
 if __name__ == '__main__':
