@@ -144,8 +144,9 @@ def run_experiment(digit_filter, lda_dims, active_params, legend_labels):
             plt.show()
             
     # Prepare active learning data splits (using slicing)
-    X_test, y_test = X_lda[500:], y[500:]
-    X_pool, y_pool = X_lda[:500], y[:500]
+    Pool_size = active_params["initial_samples"] + active_params["added_samples"] * active_params["num_iterations"]
+    X_test, y_test = X_lda[Pool_size:], y[Pool_size:]
+    X_pool, y_pool = X_lda[:Pool_size], y[:Pool_size]
     
     lr_model = lin.LogisticRegression(penalty='l2', C=1.)
     pool_order = np.random.permutation(len(X_pool))
