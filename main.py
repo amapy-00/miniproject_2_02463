@@ -102,6 +102,16 @@ def simulate_qbc(model, X_pool, y_pool, X_test, y_test, pool_order, initial_samp
         print(f"Model: LR, {len(X_train)} samples (QBC)")
     return accuracy_results
 
+def compare_committee_sizes(model, X_pool, y_pool, X_test, y_test, pool_order, initial_samples, added_samples, num_iterations, committee_sizes):
+    """Run QBC simulation for different committee sizes and return results as a dict."""
+    results = {}
+    for cs in committee_sizes:
+        print(f"Running QBC with committee size {cs}")
+        results[cs] = simulate_qbc(model, X_pool, y_pool, X_test, y_test,
+                                   pool_order, initial_samples, added_samples, num_iterations,
+                                   committee_size=cs)
+    return results
+
 # --------------------------
 # Main experiments
 
@@ -110,7 +120,8 @@ def run_experiment(digit_filter, lda_dims, active_params, legend_labels):
     For a given dataset (digit_filter) and LDA settings, this experiment:
       - Loads data and displays sample images.
       - Runs PCA (for variance check) and then applies LDA.
-      - Performs active learning (random sampling and QBC) and plots learning curves.
+      - Performs active learning (random sampling and QBC with various committee sizes)
+        and plots all curves on one plot.
     """
     print(f"Running experiment for digits {digit_filter} with LDA dims {lda_dims}")
     # Load and display sample images
@@ -145,6 +156,8 @@ def run_experiment(digit_filter, lda_dims, active_params, legend_labels):
             
     # Prepare active learning data splits (using slicing)
     Pool_size = active_params["initial_samples"] + active_params["added_samples"] * active_params["num_iterations"]
+    Pool_size *= 50  
+    Pool_size = min(Pool_size, len(X_lda))
     X_test, y_test = X_lda[Pool_size:], y[Pool_size:]
     X_pool, y_pool = X_lda[:Pool_size], y[:Pool_size]
     
@@ -154,33 +167,52 @@ def run_experiment(digit_filter, lda_dims, active_params, legend_labels):
     random_acc = simulate_random_sampling(lr_model, X_pool, y_pool, X_test, y_test,
                                           pool_order, active_params['initial_samples'],
                                           active_params['added_samples'], active_params['num_iterations'])
-    qbc_acc = simulate_qbc(lr_model, X_pool, y_pool, X_test, y_test,
-                           pool_order, active_params['initial_samples'],
-                           active_params['added_samples'], active_params['num_iterations'],
-                           committee_size=active_params.get('committee_size', 10))
     
+    # Compare different QBC committee sizes
+    comp_results = compare_committee_sizes(lr_model, X_pool, y_pool, X_test, y_test,
+                                           pool_order, active_params['initial_samples'],
+                                           active_params['added_samples'], active_params['num_iterations'],
+                                           active_params['committee_sizes'])
+    
+    # Plot both random sampling and QBC curves (for each committee size) in one figure
     plt.figure(figsize=(6, 4), dpi=150)
     random_results = np.array(random_acc)
-    qbc_results = np.array(qbc_acc)
-    plt.plot(random_results[:, 0], random_results[:, 1], marker='o')
-    plt.plot(qbc_results[:, 0], qbc_results[:, 1], marker='s')
+    plt.plot(random_results[:, 0], random_results[:, 1], marker='o', label='Random sampling')
+    for cs, acc in comp_results.items():
+        cs_results = np.array(acc)
+        plt.plot(cs_results[:, 0], cs_results[:, 1], marker='o', label=f'QBC Committee = {cs}')
     plt.xlabel("Number of training samples")
     plt.ylabel("Test accuracy")
-    plt.legend(legend_labels)
-    plt.title(f"Active learning ({digit_filter})")
+    plt.legend()
+    plt.title(f"Comparison: Random vs QBC (Committee Sizes) ({digit_filter}) pool_size={Pool_size}")
     plt.show()
 
 def main():
     # Experiment 1: Digits 1 and 7; LDA with 1 component; active learning parameters
-    exp1_params = {'initial_samples': 10, 'added_samples': 5, 'num_iterations': 30, 'committee_size': 10}
+    exp1_params = {
+        'initial_samples': 10,
+        'added_samples': 5,
+        'num_iterations': 30,
+        'committee_sizes': [5, 10, 15]  # Compare different committee sizes
+    }
     run_experiment("1,7", lda_dims=1, active_params=exp1_params, legend_labels=('Random sampling', 'QBC'))
     
     # Experiment 2: Digits 1,7,9; LDA with 2 components
-    exp2_params = {'initial_samples': 10, 'added_samples': 5, 'num_iterations': 30, 'committee_size': 10}
+    exp2_params = {
+        'initial_samples': 10,
+        'added_samples': 5,
+        'num_iterations': 30,
+        'committee_sizes': [5, 10, 15]
+    }
     run_experiment("1,7,9", lda_dims=2, active_params=exp2_params, legend_labels=('Random sampling', 'QBC'))
     
     # Experiment 3: All digits; LDA with 8 components; different active learning parameters
-    exp3_params = {'initial_samples': 10, 'added_samples': 10, 'num_iterations': 30, 'committee_size': 10}
+    exp3_params = {
+        'initial_samples': 10,
+        'added_samples': 10,
+        'num_iterations': 30,
+        'committee_sizes': [5, 10, 15]
+    }
     run_experiment("all", lda_dims=8, active_params=exp3_params, legend_labels=('Random sampling', 'QBC'))
 
 if __name__ == '__main__':
