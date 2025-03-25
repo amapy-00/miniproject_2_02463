@@ -12,6 +12,7 @@ from sklearn.preprocessing import StandardScaler
 import sklearn.linear_model as lin
 import sklearn.metrics
 import sklearn.utils
+from scipy.stats import entropy
 
 plt.style.use(['science','notebook'])
 
@@ -68,7 +69,7 @@ def simulate_random_sampling(model, X_pool, y_pool, X_test, y_test, pool_order, 
         print(f"Model: LR, {initial_samples + i * added_samples} random samples")
     return accuracy_results
 
-def simulate_qbc(model, X_pool, y_pool, X_test, y_test, pool_order, initial_samples, added_samples, num_iterations, committee_size=10):
+def simulate_qbc(model, X_pool, y_pool, X_test, y_test, pool_order, initial_samples, added_samples, num_iterations, uncertainty_metric, committee_size=10):
     """Active learning simulation using QBC with bootstrapped committees."""
     train_indices = pool_order[:initial_samples]
     X_train = np.take(X_pool, train_indices, axis=0)
@@ -77,13 +78,15 @@ def simulate_qbc(model, X_pool, y_pool, X_test, y_test, pool_order, initial_samp
     accuracy_results = []
     
     for i in range(num_iterations):
+
         committee_predictions = []
         for _ in range(committee_size):
             X_boot, y_boot = sklearn.utils.resample(X_train, y_train, stratify=y_train)
             model.fit(X_boot, y_boot)
             preds = model.predict(X_pool[remaining_indices])
-            committee_predictions.append(preds)
+            committee_predictions.append(preds.astype(int))
         committee_predictions = np.array(committee_predictions)
+
         vote_fraction = []
         for j in range(committee_predictions.shape[1]):
             counts = np.bincount(committee_predictions[:, j].astype(int))
@@ -100,7 +103,48 @@ def simulate_qbc(model, X_pool, y_pool, X_test, y_test, pool_order, initial_samp
         acc = sklearn.metrics.accuracy_score(y_test, predictions)
         accuracy_results.append((len(X_train), acc))
         print(f"Model: LR, {len(X_train)} samples (QBC)")
+
+    if uncertainty_metric == 'vote_entropy':
+        uncertainty_scores = calculate_vote_entropy(committee_predictions)
+        print("Mean uncertainty:", np.mean(uncertainty_scores))
+        print("Maximum uncertainty:", np.max(uncertainty_scores))
+    elif uncertainty_metric == 'variance':
+        uncertainty_scores = calculate_variance(committee_predictions)
+        print("Mean uncertainty:", np.mean(uncertainty_scores))
+        print("Maximum uncertainty:", np.max(uncertainty_scores))
+
     return accuracy_results
+
+def calculate_vote_entropy(predictions):
+    """
+    Calculates vote entropy for classification tasks.
+    predictions: A list of arrays, where each array contains the predicted class labels from a committee member.
+    """
+    num_samples = predictions[0].shape[0]
+    entropy_values = np.zeros(num_samples)
+
+    for i in range(num_samples):
+        # Count votes for each class
+        class_counts = np.bincount([pred[i] for pred in predictions])
+        # Calculate probabilities
+        probabilities = class_counts / len(predictions)
+        # Calculate entropy
+        entropy_values[i] = entropy(probabilities, base=2)
+
+    plt.hist(entropy_values, bins=20)
+    plt.title("Vote entropy distribution")
+    plt.xlabel("Vote entropy")
+    plt.ylabel("Frequency")
+    plt.show()
+    return entropy_values
+
+def calculate_variance(predictions):
+    """
+    Calculates variance for regression tasks.
+    predictions: A list of arrays, where each array contains the predicted values from a committee member.
+    """
+    return np.var(predictions, axis=0) # Variance along the committee member axis 
+
 
 def compare_committee_sizes(model, X_pool, y_pool, X_test, y_test, pool_order, initial_samples, added_samples, num_iterations, committee_sizes):
     """Run QBC simulation for different committee sizes and return results as a dict."""
@@ -167,6 +211,11 @@ def run_experiment(digit_filter, lda_dims, active_params, legend_labels):
     random_acc = simulate_random_sampling(lr_model, X_pool, y_pool, X_test, y_test,
                                           pool_order, active_params['initial_samples'],
                                           active_params['added_samples'], active_params['num_iterations'])
+    qbc_acc = simulate_qbc(lr_model, X_pool, y_pool, X_test, y_test,
+                           pool_order, active_params['initial_samples'],
+                           active_params['added_samples'], active_params['num_iterations'],
+                           committee_size=active_params.get('committee_size', 10),
+                           uncertainty_metric='vote_entropy')
     
     # Compare different QBC committee sizes
     comp_results = compare_committee_sizes(lr_model, X_pool, y_pool, X_test, y_test,
