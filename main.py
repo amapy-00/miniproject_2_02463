@@ -69,6 +69,9 @@ def simulate_random_sampling(model, X_pool, y_pool, X_test, y_test, pool_order, 
         print(f"Model: LR, {initial_samples + i * added_samples} random samples")
     return accuracy_results
 
+# have one mode: model.predict_proba and predict for every sample in the pool and then also choose the least confident samples
+# (from 1 to x, same as in the QBC) only difference is calculating the prob from the single model (LR) and make the committee a
+# single model.There is relevant code in week 7 exercises.
 def simulate_qbc(model, X_pool, y_pool, X_test, y_test, pool_order, initial_samples, added_samples, num_iterations, uncertainty_metric, committee_size=10):
     """Active learning simulation using QBC with bootstrapped committees."""
     train_indices = pool_order[:initial_samples]
@@ -115,6 +118,30 @@ def simulate_qbc(model, X_pool, y_pool, X_test, y_test, pool_order, initial_samp
 
     return accuracy_results
 
+def simulate_single_US_model(model, X_pool, y_pool, X_test, y_test, pool_order, initial_samples, added_samples, num_iterations):
+    accuracy = []
+    trainset = pool_order[:initial_samples]
+    Xtrain = np.take(X_pool, trainset, axis=0)
+    ytrain = np.take(y_pool, trainset, axis=0)
+    poolidx=np.arange(len(X_pool),dtype=np.int64)
+    poolidx=np.setdiff1d(poolidx,trainset)
+
+    for i in range(num_iterations):
+        model.fit(Xtrain, ytrain)  # Fit model
+        ye = model.predict(X_test)  # Predict on test set
+        accuracy.append((len(Xtrain), sklearn.metrics.accuracy_score(y_test, ye)))  # Calculate and append acc
+        ypool_p = model.predict_proba(X_pool[poolidx])  # Get label probs on unlab pool
+        selected_idx = np.argsort(-ypool_p.max(axis=1))  # Select least confident samples
+
+        # Add to training set
+        Xtrain = np.concatenate((Xtrain, X_pool[poolidx[selected_idx[-added_samples:]]]))
+        ytrain = np.concatenate((ytrain, y_pool[poolidx[selected_idx[-added_samples:]]]))
+        poolidx = np.setdiff1d(poolidx, poolidx[selected_idx[added_samples]])
+
+        print(f"Model: LR, {len(Xtrain)} samples (US).")
+
+    return accuracy
+
 def calculate_vote_entropy(predictions):
     """
     Calculates vote entropy for classification tasks.
@@ -136,6 +163,7 @@ def calculate_vote_entropy(predictions):
     plt.xlabel("Vote entropy")
     plt.ylabel("Frequency")
     plt.show()
+
     return entropy_values
 
 def calculate_variance(predictions):
@@ -153,7 +181,7 @@ def compare_committee_sizes(model, X_pool, y_pool, X_test, y_test, pool_order, i
         print(f"Running QBC with committee size {cs}")
         results[cs] = simulate_qbc(model, X_pool, y_pool, X_test, y_test,
                                    pool_order, initial_samples, added_samples, num_iterations,
-                                   committee_size=cs)
+                                   committee_size=cs, uncertainty_metric='vote_entropy')
     return results
 
 # --------------------------
@@ -217,6 +245,11 @@ def run_experiment(digit_filter, lda_dims, active_params, legend_labels):
                            committee_size=active_params.get('committee_size', 10),
                            uncertainty_metric='vote_entropy')
     
+    simple_us = simulate_single_US_model(lr_model, X_pool, y_pool, X_test, y_test,
+                                         pool_order, active_params['initial_samples'],
+                                         active_params['added_samples'], active_params['num_iterations'])
+    
+    
     # Compare different QBC committee sizes
     comp_results = compare_committee_sizes(lr_model, X_pool, y_pool, X_test, y_test,
                                            pool_order, active_params['initial_samples'],
@@ -230,6 +263,8 @@ def run_experiment(digit_filter, lda_dims, active_params, legend_labels):
     for cs, acc in comp_results.items():
         cs_results = np.array(acc)
         plt.plot(cs_results[:, 0], cs_results[:, 1], marker='o', markersize=4, label=f'QBC Committee = {cs}')
+    simple_results = np.array(simple_us)
+    plt.plot(simple_results[:, 0], simple_results[:, 1], marker='o', markersize=4, label='Uncertainty Sampling')
     plt.xlabel("Number of training samples", fontsize=10)
     plt.ylabel("Test accuracy", fontsize=10)
     plt.title(f"Comparison: Random vs QBC (Committee Sizes) ({digit_filter})\npool_size={Pool_size}", fontsize=12)
