@@ -13,6 +13,12 @@ import sklearn.linear_model as lin
 import sklearn.metrics
 import sklearn.utils
 from scipy.stats import entropy
+import random
+
+# Set a global seed for reproducibility
+SEED = 42
+np.random.seed(SEED)
+random.seed(SEED)
 
 plt.style.use(['science','notebook'])
 
@@ -315,6 +321,7 @@ def main():
         'committee_sizes': [5, 10, 15],  # Compare different committee sizes
         'visualize': True
     }
+    np.random.seed(SEED)  # Reset seed for reproducibility
     run_experiment("1,7", lda_dims=1, active_params=exp1_params, legend_labels=('Random sampling', 'QBC'))
     
     # Experiment 2: Digits 1,7,9; LDA with 2 components
@@ -324,6 +331,7 @@ def main():
         'num_iterations': 30,
         'committee_sizes': [5, 10, 15]
     }
+    np.random.seed(SEED)  # Reset seed for reproducibility
     run_experiment("1,7,9", lda_dims=2, active_params=exp2_params, legend_labels=('Random sampling', 'QBC'))
     
     # Experiment 3: All digits; LDA with 8 components; different active learning parameters
@@ -333,6 +341,7 @@ def main():
         'num_iterations': 30,
         'committee_sizes': [5, 10, 15]
     }
+    np.random.seed(SEED)  # Reset seed for reproducibility
     run_experiment("all", lda_dims=8, active_params=exp3_params, legend_labels=('Random sampling', 'QBC'))
 
 if __name__ == '__main__':
