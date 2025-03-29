@@ -149,20 +149,28 @@ def simulate_single_US_model(model, X_pool, y_pool, X_test, y_test, pool_order, 
     ytrain = np.take(y_pool, trainset, axis=0)
     poolidx=np.arange(len(X_pool),dtype=np.int64)
     poolidx=np.setdiff1d(poolidx,trainset)
+    
+    model.fit(Xtrain, ytrain)
 
     for i in range(num_iterations):
-        model.fit(Xtrain, ytrain)  # Fit model
-        ye = model.predict(X_test)  # Predict on test set
-        accuracy.append((len(Xtrain), sklearn.metrics.accuracy_score(y_test, ye)))  # Calculate and append acc
-        ypool_p = model.predict_proba(X_pool[poolidx])  # Get label probs on unlab pool
-        selected_idx = np.argsort(-ypool_p.max(axis=1))  # Select least confident samples
-
-        # Add to training set
-        Xtrain = np.concatenate((Xtrain, X_pool[poolidx[selected_idx[-added_samples:]]]))
-        ytrain = np.concatenate((ytrain, y_pool[poolidx[selected_idx[-added_samples:]]]))
-        poolidx = np.setdiff1d(poolidx, poolidx[selected_idx[added_samples]])
-
-        print(f"Model: LR, {len(Xtrain)} samples (US).")
+        # Obtain label probabilities for the current pool
+        ypool_p = model.predict_proba(X_pool[poolidx])
+        # Select samples with the least confidence (lowest max probability)
+        selected_idx = np.argsort(-ypool_p.max(axis=1))
+        
+        # Add the selected samples to the training set
+        new_sample_inds = poolidx[selected_idx[-added_samples:]]
+        Xtrain = np.concatenate((Xtrain, X_pool[new_sample_inds]))
+        ytrain = np.concatenate((ytrain, y_pool[new_sample_inds]))
+        poolidx = np.setdiff1d(poolidx, new_sample_inds)
+        
+        # Retrain the model on the updated training set
+        model.fit(Xtrain, ytrain)
+        ye = model.predict(X_test)
+        test_accuracy = sklearn.metrics.accuracy_score(y_test, ye)
+        accuracy.append((len(Xtrain), test_accuracy))
+        
+        print(f"Model: LR, {len(Xtrain)} samples (US) - Accuracy after update: {test_accuracy:.4f}.")
 
     return accuracy
 
@@ -198,7 +206,7 @@ def calculate_variance(predictions):
     return np.var(predictions, axis=0) # Variance along the committee member axis 
 
 
-def compare_committee_sizes(model, X_pool, y_pool, X_test, y_test, pool_order, initial_samples, added_samples, num_iterations, committee_sizes):
+def compare_committee_sizes(model, X_pool, y_pool, X_test, y_test, pool_order, initial_samples, added_samples, num_iterations, committee_sizes, visualize):
     """Run QBC simulation for different committee sizes and return results as a dict."""
     results = {}
     for cs in committee_sizes:
