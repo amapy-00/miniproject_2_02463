@@ -68,7 +68,7 @@ def simulate_random_sampling(model, X_pool, y_pool, X_test, y_test, pool_order, 
         print(f"Model: LR, {initial_samples + i * added_samples} random samples")
     return accuracy_results
 
-def simulate_qbc(model, X_pool, y_pool, X_test, y_test, pool_order, initial_samples, added_samples, num_iterations, committee_size=10):
+def simulate_qbc(model, X_pool, y_pool, X_test, y_test, pool_order, initial_samples, added_samples, num_iterations, committee_size=10, visualize=False):
     """Active learning simulation using QBC with bootstrapped committees."""
     train_indices = pool_order[:initial_samples]
     X_train = np.take(X_pool, train_indices, axis=0)
@@ -89,6 +89,30 @@ def simulate_qbc(model, X_pool, y_pool, X_test, y_test, pool_order, initial_samp
             counts = np.bincount(committee_predictions[:, j].astype(int))
             vote_fraction.append(np.max(counts) / committee_size)
         vote_fraction = np.array(vote_fraction)
+        
+        # Visualization of uncertainty (only if 1-dim) 
+        if visualize and X_pool.shape[1] == 1:
+            uncertainties = 1 - vote_fraction
+            plt.figure(figsize=(8,3))
+            # Plot pool samples (using their 1D feature values, colored by class)
+            plt.scatter(X_pool[remaining_indices].flatten(), np.zeros(X_pool[remaining_indices].shape[0]), 
+                        c=y_pool[remaining_indices].astype(float), cmap='viridis', marker='o', label='Pool')
+            # Plot current training samples
+            plt.scatter(X_train.flatten(), np.zeros_like(X_train.flatten()), 
+                        c='green', marker='x', s=100, label='Training')
+            # Plot error bars representing uncertainty for each pool sample
+            for idx, unc in zip(remaining_indices, uncertainties):
+                plt.errorbar(X_pool[idx,0], 0, yerr=unc, fmt='none', ecolor='gray', capsize=3)
+            # Highlight the chosen samples for this iteration
+            plt.scatter(X_pool[remaining_indices][np.argsort(vote_fraction)[:added_samples]].flatten(), 
+                        np.zeros(added_samples), c='red', marker='*', s=150, label='Chosen')
+            plt.title(f"QBC Iteration {i+1}")
+            plt.xlabel("LDA Feature")
+            plt.yticks([])
+            plt.legend()
+            plt.tight_layout()
+            plt.show()
+        
         # Select least confident samples (lowest vote_fraction)
         selected_idx = np.argsort(vote_fraction)[:added_samples]
         new_train_indices = remaining_indices[selected_idx]
@@ -102,14 +126,15 @@ def simulate_qbc(model, X_pool, y_pool, X_test, y_test, pool_order, initial_samp
         print(f"Model: LR, {len(X_train)} samples (QBC)")
     return accuracy_results
 
-def compare_committee_sizes(model, X_pool, y_pool, X_test, y_test, pool_order, initial_samples, added_samples, num_iterations, committee_sizes):
+def compare_committee_sizes(model, X_pool, y_pool, X_test, y_test, pool_order, initial_samples, added_samples, num_iterations, committee_sizes, visualize=False):
     """Run QBC simulation for different committee sizes and return results as a dict."""
     results = {}
     for cs in committee_sizes:
         print(f"Running QBC with committee size {cs}")
         results[cs] = simulate_qbc(model, X_pool, y_pool, X_test, y_test,
                                    pool_order, initial_samples, added_samples, num_iterations,
-                                   committee_size=cs)
+                                   committee_size=cs,
+                                   visualize=visualize)
     return results
 
 # --------------------------
@@ -172,7 +197,8 @@ def run_experiment(digit_filter, lda_dims, active_params, legend_labels):
     comp_results = compare_committee_sizes(lr_model, X_pool, y_pool, X_test, y_test,
                                            pool_order, active_params['initial_samples'],
                                            active_params['added_samples'], active_params['num_iterations'],
-                                           active_params['committee_sizes'])
+                                           active_params['committee_sizes'],
+                                           visualize=active_params.get("visualize", False))
     
     # Plot both random sampling and QBC curves (for each committee size) in one figure
     plt.figure(figsize=(8, 5), dpi=150)
@@ -194,7 +220,8 @@ def main():
         'initial_samples': 10,
         'added_samples': 5,
         'num_iterations': 30,
-        'committee_sizes': [5, 10, 15]  # Compare different committee sizes
+        'committee_sizes': [5, 10, 15],  # Compare different committee sizes
+        'visualize': True
     }
     run_experiment("1,7", lda_dims=1, active_params=exp1_params, legend_labels=('Random sampling', 'QBC'))
     
