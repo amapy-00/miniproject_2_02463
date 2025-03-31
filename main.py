@@ -82,7 +82,15 @@ def simulate_random_sampling(model, X_pool, y_pool, X_test, y_test, pool_order, 
 # single model.There is relevant code in week 7 exercises.
 def simulate_qbc(model, X_pool, y_pool, X_test, y_test, pool_order, initial_samples, added_samples, num_iterations, uncertainty_metric, committee_size=10, visualize=False, X_orig_pool=None):
     """Active learning simulation using QBC with bootstrapped committees."""
-    train_indices = pool_order[:initial_samples]
+    # Select training samples: choose (initial_samples - 1) samples from one class (target class)
+    # and select the last sample from another class.
+    target_class = y_pool[pool_order[0]]
+    target_indices = [idx for idx in pool_order if y_pool[idx] == target_class]
+    other_indices = [idx for idx in pool_order if y_pool[idx] != target_class]
+    if len(target_indices) >= initial_samples - 1 and len(other_indices) > 0:
+        train_indices = target_indices[:initial_samples - 1] + [other_indices[-1]]
+    else:
+        train_indices = pool_order[:initial_samples]
     X_train = np.take(X_pool, train_indices, axis=0)
     y_train = np.take(y_pool, train_indices, axis=0)
     remaining_indices = np.setdiff1d(np.arange(len(X_pool)), train_indices)
