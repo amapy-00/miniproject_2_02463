@@ -278,12 +278,7 @@ def run_experiment(digit_filter, lda_dims, active_params, legend_labels):
     random_acc = simulate_random_sampling(lr_model, X_pool, y_pool, X_test, y_test,
                                           pool_order, active_params['initial_samples'],
                                           active_params['added_samples'], active_params['num_iterations'])
-    qbc_acc = simulate_qbc(lr_model, X_pool, y_pool, X_test, y_test,
-                           pool_order, active_params['initial_samples'],
-                           active_params['added_samples'], active_params['num_iterations'],
-                           committee_size=active_params.get('committee_size', 10),
-                           uncertainty_metric='vote_entropy')
-    
+
     simple_us = simulate_single_US_model(lr_model, X_pool, y_pool, X_test, y_test,
                                          pool_order, active_params['initial_samples'],
                                          active_params['added_samples'], active_params['num_iterations'])
