@@ -14,6 +14,8 @@ import sklearn.metrics
 import sklearn.utils
 from scipy.stats import entropy
 import random
+import pandas as pd
+import seaborn as sns
 
 # Set a global seed for reproducibility
 SEED = 42
@@ -105,23 +107,29 @@ def simulate_qbc(model, X_pool, y_pool, X_test, y_test, pool_order, initial_samp
         # Visualization of uncertainty (only if 1-dim) 
         if visualize and X_pool.shape[1] == 1:
             uncertainties = 1 - vote_fraction
-            plt.figure(figsize=(8,3))
-            # Plot pool samples (using their 1D feature values, colored by class)
-            plt.scatter(X_pool[remaining_indices].flatten(), np.zeros(X_pool[remaining_indices].shape[0]), 
-                        c=y_pool[remaining_indices].astype(float), cmap='viridis', marker='o', label='Pool')
-            # Plot current training samples
-            plt.scatter(X_train.flatten(), np.zeros_like(X_train.flatten()), 
-                        c='green', marker='x', s=100, label='Training')
-            # Plot error bars representing uncertainty for each pool sample
-            for idx, unc in zip(remaining_indices, uncertainties):
-                plt.errorbar(X_pool[idx,0], 0, yerr=unc, fmt='none', ecolor='gray', capsize=3)
-            # Highlight the chosen samples for this iteration
-            plt.scatter(X_pool[remaining_indices][np.argsort(vote_fraction)[:added_samples]].flatten(), 
-                        np.zeros(added_samples), c='red', marker='*', s=150, label='Chosen')
-            plt.title(f"QBC Iteration {i+1}")
-            plt.xlabel("LDA Feature")
-            plt.yticks([])
-            plt.legend()
+            plt.figure(figsize=(10, 4))
+            
+            # Create a DataFrame and sort by the X values for a smoother plot
+            sns.kdeplot(x=X_pool.reshape(-1), hue=y_pool.reshape(-1), fill=True)
+            plot_df = pd.DataFrame({
+                'first_lda_feature': X_pool[remaining_indices].flatten(),
+                'uncertainty': uncertainties
+            }).sort_values('first_lda_feature')
+            sns.lineplot(x='first_lda_feature', y='uncertainty', data=plot_df, color='blue', alpha=0.8)
+            
+            # Plot current training samples for reference (optional)
+            plt.scatter(X_train.flatten(), [0]*len(X_train.flatten()),
+                        c='green', marker='x', s=100, label='Training', alpha=0.9)
+
+            # Highlight the chosen samples for this iteration (optional)
+            chosen_indices = np.argsort(vote_fraction)[:added_samples]
+            plt.scatter(X_pool[remaining_indices][chosen_indices].flatten(),
+                        [0]*added_samples, c='red', marker='*', s=150, label='Chosen', edgecolor='black', linewidth=0.5)
+            
+            plt.title(f"Uncertainty Distribution QBC Iteration {i+1}", fontsize=14)
+            plt.xlabel("First LDA Feature", fontsize=12)
+            plt.ylabel("Uncertainty Score", fontsize=12)
+            plt.legend(loc='upper right', fontsize=10)
             plt.tight_layout()
             plt.show()
         
