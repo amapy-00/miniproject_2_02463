@@ -80,7 +80,7 @@ def simulate_random_sampling(model, X_pool, y_pool, X_test, y_test, pool_order, 
 # have one mode: model.predict_proba and predict for every sample in the pool and then also choose the least confident samples
 # (from 1 to x, same as in the QBC) only difference is calculating the prob from the single model (LR) and make the committee a
 # single model.There is relevant code in week 7 exercises.
-def simulate_qbc(model, X_pool, y_pool, X_test, y_test, pool_order, initial_samples, added_samples, num_iterations, uncertainty_metric, committee_size=10, visualize=False):
+def simulate_qbc(model, X_pool, y_pool, X_test, y_test, pool_order, initial_samples, added_samples, num_iterations, uncertainty_metric, committee_size=10, visualize=False, X_orig_pool=None):
     """Active learning simulation using QBC with bootstrapped committees."""
     train_indices = pool_order[:initial_samples]
     X_train = np.take(X_pool, train_indices, axis=0)
@@ -107,31 +107,53 @@ def simulate_qbc(model, X_pool, y_pool, X_test, y_test, pool_order, initial_samp
         # Visualization of uncertainty (only if 1-dim) 
         if visualize and X_pool.shape[1] == 1:
             uncertainties = 1 - vote_fraction
-            plt.figure(figsize=(10, 4))
+            plt.figure(figsize=(12, 6))
+            ax = plt.gca()
+            chosen_indices = np.argsort(vote_fraction)[:added_samples]
             
-            # Create a DataFrame and sort by the X values for a smoother plot
-            sns.kdeplot(x=X_pool.reshape(-1), hue=y_pool.reshape(-1), fill=True)
+            # Plot KDE with hue; capture the legend handles
+            sns.kdeplot(x=X_pool.reshape(-1), hue=y_pool.reshape(-1), fill=True, ax=ax)
+            kde_handles, kde_labels = ax.get_legend_handles_labels()
+            
+            # Plot uncertainty line and training/chosen scatter points (remove label arguments)
             plot_df = pd.DataFrame({
                 'first_lda_feature': X_pool[remaining_indices].flatten(),
                 'uncertainty': uncertainties
             }).sort_values('first_lda_feature')
-            sns.lineplot(x='first_lda_feature', y='uncertainty', data=plot_df, color='blue', alpha=0.8)
+            sns.lineplot(x='first_lda_feature', y='uncertainty', data=plot_df, color='blue', alpha=0.8, ax=ax)
             
-            # Plot current training samples for reference (optional)
-            plt.scatter(X_train.flatten(), [0]*len(X_train.flatten()),
-                        c='green', marker='x', s=100, label='Training', alpha=0.9)
-
-            # Highlight the chosen samples for this iteration (optional)
-            chosen_indices = np.argsort(vote_fraction)[:added_samples]
-            plt.scatter(X_pool[remaining_indices][chosen_indices].flatten(),
-                        [0]*added_samples, c='red', marker='*', s=150, label='Chosen', edgecolor='black', linewidth=0.5)
+            st_sc = ax.scatter(X_train.flatten(), [0]*len(X_train.flatten()),
+                               c='green', marker='x', s=100, alpha=0.9)  # no label here
+            ch_sc = ax.scatter(X_pool[remaining_indices][chosen_indices].flatten(),
+                               [0]*added_samples, c='red', marker='*', s=150, edgecolor='black', linewidth=0.5)  # no label
             
-            plt.title(f"Uncertainty Distribution QBC Iteration {i+1}", fontsize=14)
-            plt.xlabel("First LDA Feature", fontsize=12)
-            plt.ylabel("Uncertainty Score", fontsize=12)
-            plt.legend(loc='upper right', fontsize=10)
-            plt.tight_layout()
+            # Create custom legend handles for training and chosen samples
+            from matplotlib.lines import Line2D
+            training_handle = Line2D([], [], marker='x', color='green', linestyle='None', markersize=10, label='Training')
+            chosen_handle = Line2D([], [], marker='*', color='red', linestyle='None', markersize=15, label='Chosen')
+            
+            combined_handles = kde_handles + [training_handle, chosen_handle]
+            combined_labels = kde_labels + ['Training', 'Chosen']
+            
+            ax.set_title(f"Uncertainty Distribution QBC Iteration {i+1}", fontsize=14)
+            ax.set_xlabel("First LDA Feature", fontsize=12)
+            ax.set_ylabel("Uncertainty Score", fontsize=12)
+            ax.legend(combined_handles, combined_labels, loc='upper center', bbox_to_anchor=(0.5, -0.1), ncol=3, fontsize='small')
+            
+            if added_samples == 1 and X_orig_pool is not None:
+                from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+                axins = inset_axes(ax, width="30%", height="30%", loc='upper left')
+                chosen_orig = X_orig_pool[remaining_indices][chosen_indices[0]]
+                try:
+                    img = chosen_orig.reshape(28, 28)
+                except Exception:
+                    img = chosen_orig
+                axins.imshow(img, cmap='gray')
+                axins.axis('off')
+                                    
             plt.show()
+
+
         
         # Select least confident samples (lowest vote_fraction)
         selected_idx = np.argsort(vote_fraction)[:added_samples]
@@ -220,7 +242,7 @@ def calculate_variance(predictions):
     return np.var(predictions, axis=0) # Variance along the committee member axis 
 
 
-def compare_committee_sizes(model, X_pool, y_pool, X_test, y_test, pool_order, initial_samples, added_samples, num_iterations, committee_sizes, visualize):
+def compare_committee_sizes(model, X_pool, y_pool, X_test, y_test, pool_order, initial_samples, added_samples, num_iterations, committee_sizes, visualize, X_orig_pool=None):
     """Run QBC simulation for different committee sizes and return results as a dict."""
     results = {}
     for cs in committee_sizes:
@@ -228,7 +250,7 @@ def compare_committee_sizes(model, X_pool, y_pool, X_test, y_test, pool_order, i
         results[cs] = simulate_qbc(model, X_pool, y_pool, X_test, y_test,
                                    pool_order, initial_samples, added_samples, num_iterations,
                                    committee_size=cs,
-                                   visualize=visualize, uncertainty_metric='vote_entropy')
+                                   visualize=visualize, uncertainty_metric='vote_entropy', X_orig_pool=X_orig_pool)
     return results
 
 # --------------------------
@@ -279,6 +301,8 @@ def run_experiment(digit_filter, lda_dims, active_params, legend_labels):
     Pool_size = min(Pool_size, len(X_lda))
     X_test, y_test = X_lda[Pool_size:], y[Pool_size:]
     X_pool, y_pool = X_lda[:Pool_size], y[:Pool_size]
+    # Save the corresponding original images for visualization in QBC
+    X_pool_orig = X[:Pool_size]
     
     lr_model = lin.LogisticRegression(penalty='l2', C=1.)
     pool_order = np.random.permutation(len(X_pool))
@@ -297,7 +321,8 @@ def run_experiment(digit_filter, lda_dims, active_params, legend_labels):
                                            pool_order, active_params['initial_samples'],
                                            active_params['added_samples'], active_params['num_iterations'],
                                            active_params['committee_sizes'],
-                                           visualize=active_params.get("visualize", False))
+                                           visualize=active_params.get("visualize", False),
+                                           X_orig_pool=X_pool_orig)
     
     # Plot both random sampling and QBC curves (for each committee size) in one figure
     plt.figure(figsize=(8, 5), dpi=150)
